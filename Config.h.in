@@ -1,0 +1,19 @@
+#ifndef CONFIG_H
+#define CONFIG_H
+
+
+// Version
+#define TCP_CHAT_VERSION_MAJOR @TCP_CHAT_VERSION_MAJOR@
+#define TCP_CHAT_VERSION_MINOR @TCP_CHAT_VERSION_MINOR@
+#define TCP_CHAT_VERSION "@TCP_CHAT_VERSION@"
+
+// Optional headers
+#define HAVE_STDBOOL_H @HAVE_STDBOOL_H@
+#define HAVE_SIGNAL_H  @HAVE_SIGNAL_H@
+
+// Optional functions
+#define HAVE_SIGACTION @HAVE_SIGACTION@
+#define HAVE_SIGNAL    @HAVE_SIGNAL@
+
+
+#endif
