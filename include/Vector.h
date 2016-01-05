@@ -111,10 +111,22 @@ Type* VFUN(Type, Find)(VEC(Type) Vec,                                   \
 	return VFUN(Type, End)(Vec);                                        \
 }                                                                       \
                                                                         \
-void VFUN(Type, Remove)(VEC(Type) Vec, Type *Start)                     \
+void VFUN(Type, Remove)(VEC(Type) Vec, Type *Start, ...)                \
 {                                                                       \
 	if (Start < VFUN(Type, Begin)(Vec) || Start >= VFUN(Type, End)(Vec))\
 		return;                                                         \
+                                                                        \
+	if (DestroyF != NULL)                                               \
+	{                                                                   \
+		va_list args;                                                   \
+		va_start(args, Start);                                          \
+                                                                        \
+		typedef void (*destroy_t)(Type*, va_list);                      \
+		destroy_t destroy = (destroy_t)DestroyF;                        \
+		destroy(Start, args);                                           \
+                                                                        \
+		va_end(args);                                                   \
+	}                                                                   \
                                                                         \
 	for (; Start != VFUN(Type, End)(Vec); ++Start)                      \
 		*Start = *(Start + 1);                                          \
@@ -133,7 +145,7 @@ Type* VFUN(Type, Begin)(VEC(Type) Vec);                                 \
 Type* VFUN(Type, End)(VEC(Type) Vec);                                   \
 Type* VFUN(Type, Find)(VEC(Type) Vec,                                   \
 	bool (*pred)(const Type*, va_list), ...);                           \
-void VFUN(Type, Remove)(VEC(Type) Vec, Type *Start);
+void VFUN(Type, Remove)(VEC(Type) Vec, Type *Start, ...);
 
 
 #endif
