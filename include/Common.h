@@ -3,6 +3,7 @@
 
 
 #define PORT 27015
+#define NAME_LENGTH 32
 
 
 #endif
