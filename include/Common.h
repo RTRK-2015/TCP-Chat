@@ -4,6 +4,7 @@
 
 #define PORT 27015
 #define NAME_LENGTH 32
+#define BUFFER_SIZE 512
 
 
 #endif
