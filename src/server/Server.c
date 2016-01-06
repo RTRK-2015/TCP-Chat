@@ -8,19 +8,19 @@
 #include <unistd.h>
 #include "Common.h"
 #include "Config.h"
+#include "User.h"
 
 
 #define ERROR(str) { perror(str); exit(EXIT_FAILURE); }
 
+
 // The "main" socket
 static int Sock;
 
-// An array of accept()ed sockets.
-static int *Socks;
-static size_t Length;
-static size_t Reserved;
+VEC(User) Users;
 
 
+// Forward declarations
 void Cleanup(int signum);
 void InstallSignalHandler();
 
@@ -29,16 +29,10 @@ int main(int argc, char *argv[])
 {
 	InstallSignalHandler();
 
-	// Prepare the array
-	Length   = 0;
-	Reserved = 10;
-	Socks    = (int*)malloc(Reserved * sizeof(int));
-	if (Socks == NULL)
-		ERROR("malloc");
+	Users = VFUN(User, New)();
 
 	// Create the "main" socket, bind it to port and start listening
-	Sock = socket(AF_INET, SOCK_STREAM, 0);
-	if (Sock == -1)
+	if ((Sock = socket(AF_INET, SOCK_STREAM, 0)) == -1)
 		ERROR("socket");
 
 	struct sockaddr_in server =
@@ -81,6 +75,7 @@ void Cleanup(int signum)
 	write(fd, exiting, sizeof(exiting));
 	fsync(fd);
 
+	VFUN(User, Delete)(Users);
 	close(Sock);
 
 	exit(EXIT_SUCCESS);
