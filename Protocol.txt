@@ -1,0 +1,166 @@
+1. INTRODUCTION
+The server and client communicate by exchanging messages. A message consists of
+a command, arguments and a terminator. Importantly:
+- Every command is a single letter
+- The first argument (if any) follows IMMEDIATELY after the command
+- Further arguments (if any) are separated by the SEPARATOR (':')
+- The whole sequence is terminated by the TERMINATOR (';')
+- If any argument contains a SEPARATOR or a TERMINATOR character, that
+    character must be escaped by using the ESCAPER
+- A message (command, arguments, terminator) may contain at most BUFFER_SIZE
+    characters
+
+
+2. NOTES
+Commands will be refered to by their symbolic name (e.g. login command or
+'login' or CMD_LOGIN) instead of their actual character value (e.g. 'i').
+Commands and their values are listed in the <Common.h> header.
+
+Nonterminal symbols will be represented by enclosing a helpful description of
+the expected symbol in angle brackets (i.e. '<' and '>').
+
+There is no whitespace between the command and the first argument, the first
+argument and the separator, the separator and the second argument...
+
+
+3. PROTOCOL
+3.1 LOGGING ON
+The client initiates the communication by sending the LOGIN message, which is
+of the following structure:
+
+    CMD_LOGIN <Username> TERMINATOR
+
+The username can be of any length (barring the message exceeding the maximum
+message length), but note that the server will only consider the first
+NAME_LENGTH characters of it.
+The server can respond to the message in two ways; if the logon was successful,
+the server will respond with:
+
+    CMD_YES TERMINATOR
+
+If the logon was unsuccessful, the server will respond with:
+
+    CMD_NO TERMINATOR
+
+Note that the server is not a particularly talkative fellow and will provide no
+information on what exactly went wrong with logging on.
+
+
+3.2 LOGGING OFF
+A client that finds it necessary to dissolve the network bands that have
+connected it to the brave new world of internet chat, and to assume, among
+the disconnected losers of the world, the separate and equal station to which
+it is (still) entitled, may send a LOGOFF message; to wit:
+
+    CMD_LOGOFF TERMINATOR
+
+The server will find that it is below its dignity to respond to such an
+appalling request.
+
+
+3.3 LIST OF LOGGED USERS
+To retrieve the list of all logged users, the client should send a USERS
+message:
+
+    CMD_USERS TERMINATOR
+
+The server will respond:
+
+    CMD_YES <N> TERMINATOR
+    CMD_YES <Username1> TERMINATOR
+    CMD_YES <Username2> TERMINATOR
+    ...
+    CMD_YES <UsernameN> TERMINATOR
+
+
+3.4 ESTABLISHING A CHAT CHANNEL
+In order to actually talk to someone, it is necessary to establish a channel
+first. To do so requires the client to send the message of the following kind:
+
+    CMD_TALK <Username> TERMINATOR
+
+The server will then try to establish a talking channel and will respond with:
+
+    CMD_YES TERMINATOR
+
+It is now possible for the users to talk. In case something went wrong (other
+user is busy, doesn't want to talk, ...), the server will respond with>
+
+    CMD_NO TERMINATOR
+
+Once again, the server isn't really keen on details, so you'll have to divine
+where the problem lies yourself.
+
+
+3.5 SENDING A MESSAGE
+Once the channel exists, the client may send a message to the other user:
+
+    CMD_SEND <Message> TERMINATOR
+
+Obviously, the length of this user message is limited to BUFFER_SIZE - 2
+characters. The client program may choose to make this limit visible to
+the user, or to break a longer message into pieces and send them one
+after another.
+The server will respond, like it always does, with infuriating brevity:
+
+    CMD_YES TERMINATOR
+
+Which means that the message was successfully sent to the other user. Or:
+
+    CMD_NO TERMINATOR
+
+Indicating that there was a problem with sending the message.
+
+
+3.5 CLOSING A CHAT CHANNEL
+If the client feels bored by the other user's mindless drivel, it may chose
+to close the channel by sending:
+
+    CMD_CLOSE TERMINATOR
+
+The server won't respond (it would be rude to condone rudeness), but it will
+close the channel.
+
+
+3.6 REQUEST FOR CHANNEL
+In a surprising twist, this communication is initiated by the server. If some
+other user wishes to chat with the client, that user will send the
+aforementioned ESTABLISHING A CHAT CHANNEL message to the server.
+If the desired client is already chatting with someone, the server will
+respond with:
+
+    CMD_NO TERMINATOR
+
+Otherwise, it will send the following message to the desired client:
+
+    CMD_TALK <Username> TERMINATOR
+
+Note that the sent name is the username of the user who wishes to establish the
+channel. If the client does not want to establish a channel, it should send:
+
+    CMD_NO TERMINATOR
+
+Which will be forwarded to the user who tried to initiate the channel. Or, if
+the client wants to establish a channel, it should send:
+
+    CMD_YES TERMINATOR
+
+Which will be forwarded to the other user (and the channel established,
+of course).
+
+
+3.7 RECEIVEING A MESSAGE
+If the other user sends a message to the client, through the chat channel,
+the server will forward the message to the client:
+
+    CMD_SEND <Message> TERMINATOR
+
+The server won't expect a response.
+
+
+3.8 WHAT A TERRIBLE FAILURE
+If the client sends a message that the server cannot understand, the server
+will finally respond in a different manner than usual, by sending the
+WHAT A TERRIBLE FAILURE message:
+
+    CMD_WTF TERMINATOR
