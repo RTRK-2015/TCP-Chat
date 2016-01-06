@@ -18,11 +18,14 @@
 static int Sock;
 
 VEC(User) Users;
+fd_set master, readfds;
 
 
 // Forward declarations
 void Cleanup(int signum);
 void InstallSignalHandler();
+void NewUser();
+void Respond(const User* U);
 
 
 int main(int argc, char *argv[])
@@ -49,9 +52,41 @@ int main(int argc, char *argv[])
 		ERROR("listen");
 
 	// The main processing loop
+	int maxfd = Sock;
+	FD_ZERO(&master);
+	FD_ZERO(&readfds);
+	FD_SET(Sock, &master);
+
 	while (true)
 	{
+		memcpy(&readfds, &master, sizeof(master));
 
+		int ready;
+		if ((ready = select(maxfd + 1, &readfds, NULL, NULL, NULL)) == -1)
+			ERROR("select");
+
+		if (ready > 0 && FD_ISSET(Sock, &readfds))
+		{
+			--ready;
+			NewUser();
+		}
+
+		for (User *it = VFUN(User, Begin)(Users);
+			it != VFUN(User, End)(Users) && ready > 0; ++it)
+		{
+			if (FD_ISSET(it->Sock, &readfds))
+			{
+				--ready;
+				Respond(it);
+			}
+		}
+
+		for (User *it = VFUN(User, Begin)(Users);
+			it != VFUN(User, End)(Users); ++it)
+		{
+			if (it->Sock > maxfd)
+				maxfd = it->Sock;
+		}
 	}
 }
 
@@ -93,4 +128,13 @@ void InstallSignalHandler()
 
 	if (sigaction(SIGTERM, &act, NULL) == -1)
 		ERROR("sigaction (SIGTERM)");
+}
+
+void NewUser()
+{
+}
+
+void Respond(const User* U)
+{
+
 }
