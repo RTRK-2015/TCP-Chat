@@ -1,5 +1,6 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
+#include <regex.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -130,8 +131,79 @@ void InstallSignalHandler()
 		ERROR("sigaction (SIGTERM)");
 }
 
+
+bool SameName(const User* U, va_list args)
+{
+	return strncmp(U->Name, va_arg(args, char*), NAME_LENGTH) == 0;
+}
+
+
 void NewUser()
 {
+	int newfd;
+
+	if ((newfd = accept(Sock, NULL, NULL)) == -1)
+		ERROR("accept");
+
+	char inBuffer[BUFFER_SIZE + 1] = "";
+	int size = recv(newfd, inBuffer, BUFFER_SIZE, 0);
+
+	if (size == -1)
+		ERROR("recv");
+
+	if (size == 0)
+		return;
+
+	regex_t inRegex;
+	regmatch_t matches[2];
+	if (regcomp(&inRegex, "^i(([[:alpha:]]|\\\\;)+);$", REG_EXTENDED) != 0)
+		ERROR("regcomp");
+
+	char outBuffer[BUFFER_SIZE + 1] = "";
+	if (regexec(&inRegex, inBuffer, 2, matches, 0) != 0)
+	{
+		outBuffer[0] = CMD_WTF;
+		outBuffer[1] = TERMINATOR;
+	}
+	else
+	{
+		char name[NAME_LENGTH] = "";
+
+		for (regoff_t i = matches[1].rm_so, namei = 0;
+			i < matches[1].rm_eo; ++i, ++namei)
+		{
+			if (inBuffer[i] == '\\')
+			{
+				name[namei] = ';';
+				++i;
+			}
+			else
+			{
+				name[namei] = inBuffer[i];
+			}
+		}
+
+		User* it = VFUN(User, Find)(Users, SameName, name);
+
+		if (it != VFUN(User, End)(Users))
+		{
+			outBuffer[0] = CMD_NO;
+			outBuffer[1] = TERMINATOR;
+		}
+		else
+		{
+			User newuser = { .Sock = newfd, .Name = name };
+			VFUN(User, Push)(Users, &newuser);
+
+			FD_SET(newfd, &master);
+
+			outBuffer[0] = CMD_YES;
+			outBuffer[1] = TERMINATOR;
+		}
+	}
+
+	send(newfd, outBuffer, BUFFER_SIZE, MSG_DONTWAIT);
+	regfree(&inRegex);
 }
 
 void Respond(const User* U)
