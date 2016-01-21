@@ -7,21 +7,38 @@
 #define BUFFER_SIZE 512
 
 #define SEPARATOR ':'
+#define SEPARATOR_S ":"
 #define TERMINATOR ';'
+#define TERIMATOR_S ";"
 #define ESCAPER '\\'
+#define ESCAPER_S "\\"
 
-enum Command
-{
-	CMD_LOGIN  = 'i',
-	CMD_LOGOFF = 'o',
-	CMD_USERS  = 'u',
-	CMD_TALK   = 't',
-	CMD_SEND   = 's',
-	CMD_CLOSE  = 'c',
-	CMD_YES    = 'y',
-	CMD_NO     = 'n',
-	CMD_WTF    = 'w'
-};
+#define CMD_LOGIN 'i'
+#define CMD_LOGIN_S "i"
+
+#define CMD_LOGOFF 'o'
+#define CMD_LOGOFF_S "o"
+
+#define CMD_USERS 'u'
+#define CMD_USERS_S "u"
+
+#define CMD_TALK 't'
+#define CMD_TALK_S "t"
+
+#define CMD_SEND 's'
+#define CMD_SEND_S "s"
+
+#define CMD_CLOSE 'c'
+#define CMD_CLOSE_S "c"
+
+#define CMD_YES 'y'
+#define CMD_YES_S "y"
+
+#define CMD_NO 'n'
+#define CMD_NO_S "n"
+
+#define CMD_WTF 'w'
+#define CMD_WTF_S "w"
 
 
 #endif
