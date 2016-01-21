@@ -23,16 +23,12 @@ fd_set master, readfds;
 
 
 // Forward declarations
-void Cleanup(int signum);
-void InstallSignalHandler();
 void NewUser();
 void Respond(const User* U);
 
 
 int main(int argc, char *argv[])
 {
-	InstallSignalHandler();
-
 	Users = VFUN(User, New)();
 
 	// Create the "main" socket, bind it to port and start listening
@@ -89,46 +85,6 @@ int main(int argc, char *argv[])
 				maxfd = it->Sock;
 		}
 	}
-}
-
-
-void Cleanup(int signum)
-{
-	static const char sigintText[]     = "SIGINT";
-	static const char sigtermText[]    = "SIGTERM";
-	static const char sigunknownText[] = "Unknown signal";
-	static const char caught[]         = "Caught ";
-	static const char exiting[]        = ", exiting.\n";
-	static const int fd                = STDERR_FILENO;
-
-	write(fd, caught, sizeof(caught));
-	if (signum == SIGINT)
-		write(fd, sigintText, sizeof(sigintText));
-	else if (signum == SIGTERM)
-		write(fd, sigtermText, sizeof(sigtermText));
-	else
-		write(fd, sigunknownText, sizeof(sigunknownText));
-	write(fd, exiting, sizeof(exiting));
-	fsync(fd);
-
-	VFUN(User, Delete)(Users);
-	close(Sock);
-
-	exit(EXIT_SUCCESS);
-}
-
-void InstallSignalHandler()
-{
-	struct sigaction act = { };
-
-	sigfillset(&act.sa_mask);
-	act.sa_handler = Cleanup;
-
-	if (sigaction(SIGINT, &act, NULL) == -1)
-		ERROR("sigaction (SIGINT)");
-
-	if (sigaction(SIGTERM, &act, NULL) == -1)
-		ERROR("sigaction (SIGTERM)");
 }
 
 
