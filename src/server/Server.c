@@ -10,27 +10,32 @@
 #include "Common.h"
 #include "Config.h"
 #include "User.h"
+#include "Conn.h"
 
 
 #define ERROR(str) { perror(str); exit(EXIT_FAILURE); }
 #define MIN(x, y) (((x) < (y))? (x) : (y))
 #define REGEX_NAME "([[:alpha:]]+)"
+#define REGEX_TEXT "(.+)"
 
 // The "main" socket
 static int Sock;
 
 VEC(User) Users;
+VEC(Conn) Conns;
 fd_set master, readfds;
 
 
 // Forward declarations
 void NewUser();
-void Respond(const User* U);
+void Respond(User* U);
+void RemoveUser(User *U);
 
 
 int main(int argc, char *argv[])
 {
 	Users = VFUN(User, New)();
+	Conns = VFUN(Conn, New)();
 
 	// Create the "main" socket, bind it to port and start listening
 	if ((Sock = socket(AF_INET, SOCK_STREAM, 0)) == -1)
@@ -79,8 +84,7 @@ int main(int argc, char *argv[])
 			}
 		}
 
-		for (User *it = VFUN(User, Begin)(Users);
-			it != VFUN(User, End)(Users); ++it)
+		VEC_FOR(User, it, Users)
 		{
 			if (it->Sock > maxfd)
 				maxfd = it->Sock;
@@ -110,7 +114,7 @@ void NewUser()
 	if (regcomp(&inRegex, "^" CMD_LOGIN_S REGEX_NAME ";$", REG_EXTENDED) != 0)
 		ERROR("regcomp");
 
-	char outBuffer[BUFFER_SIZE + 1] = "";
+	char outBuffer[BUFFER_SIZE] = "";
 	if (regexec(&inRegex, inBuffer, 2, matches, 0) != 0)
 	{
 		outBuffer[0] = CMD_WTF;
@@ -119,7 +123,8 @@ void NewUser()
 	else
 	{
 		char name[NAME_LENGTH + 1] = "";
-		strncpy(name, matches[1].rm_so, MIN(NAME_LENGTH, matches[1].rm_eo - matches[1].rm_so));
+		strncpy(name, inBuffer + matches[1].rm_so,
+			MIN(NAME_LENGTH, matches[1].rm_eo - matches[1].rm_so));
 
 		User* it = VFUN(User, Find)(Users, SameName, name);
 
@@ -130,7 +135,9 @@ void NewUser()
 		}
 		else
 		{
-			User newuser = { .Sock = newfd, .Name = name };
+			User newuser = { .Sock = newfd };
+			strncpy(newuser.Name, name, NAME_LENGTH);
+
 			VFUN(User, Push)(Users, &newuser);
 
 			FD_SET(newfd, &master);
@@ -140,77 +147,164 @@ void NewUser()
 		}
 	}
 
-	send(newfd, outBuffer, BUFFER_SIZE, MSG_DONTWAIT);
+	send(newfd, outBuffer, BUFFER_SIZE, 0);
 	regfree(&inRegex);
 }
 
-void Respond(const User* U)
+
+void RemoveUser(User *U)
 {
-    char inBuffer[BUFFER_SIZE + 1] = "", outBuffer[BUFFER_SIZE + 1] = "";
-    bool canSend = true;
-    size_t len;
-    char name[NAME_LENGTH + 1] = "";
-    User *it;
-    regex_t regex;
-    regmatch_t matches[2];
-
-    int ret = recv(U->Sock, inBuffer, BUFFER_SIZE, 0);
-    if (ret == -1)
-    {
-	ERROR("recv");
-    }
-    if (ret == 0)
-    {
-	VFUN(User, Remove)(Users, U);
-	canSend = false;
-    }
-
-    switch (inBuffer[0])
-    {
-    case CMD_LOGOFF:
-	VFUN(User, Remove)(Users, U);
-	canSend = false;
-	break;
-
-    case CMD_TALK:
-	if (regcomp(&regex, "^" CMD_TALK REGEX_NAME ";$", REG_EXTENDED) != 0)
-	    ERROR("regcomp");
-	if (regexec(&regex, inBuffer, 2, matches, 0) != 0)
+	VEC_FOR(Conn, cit, Conns)
 	{
-	    outBuffer[0] = CMD_WTF;
-	    outBuffer[1] = ';';
+		if (cit->Sock1 == U->Sock || cit->Sock2 == U->Sock)
+		{
+			VFUN(Conn, Remove)(Conns, cit);
+			break;
+		}
 	}
-	else
+
+	VFUN(User, Remove)(Users, U);
+	FD_CLR(U->Sock, &master);
+}
+
+
+void Respond(User* U)
+{
+	char inBuffer[BUFFER_SIZE] = "";
+	int ret = recv(U->Sock, inBuffer, BUFFER_SIZE, 0);
+	if (ret == -1)
+		ERROR("recv");
+
+	if (ret == 0)
+		RemoveUser(U);
+
+	char outBuffer[BUFFER_SIZE + 1] = "";
+	char name[NAME_LENGTH + 1]      = "";
+	char text[BUFFER_SIZE]          = "";
+	User *uit;
+	Conn *cit;
+	Conn conn;
+	regex_t regex;
+	regmatch_t matches[2];
+
+	switch (inBuffer[0])
 	{
-	    strncpy(name, matches[1].rm_so, MIN(NAME_LENGTH, matches[1].rm_eo - matches[1].rm_so));
-	    it = VFUN(User, Find)(Users, SameName, name);
+	case CMD_LOGOFF:
+		RemoveUser(U);
+		break;
 
-	    if (it == VFUN(User, End)(Users))
-	    {
-		outBuffer[0] = CMD_NO;
-		outBuffer[1] = ';';
-	    }
-	    else
-	    {
-		canSend = false;
-		outBuffer[0] = CMD_TALK;
-		strncpy(outBuffer + 1, U->Name, NAME_LENGTH);
-		len = strlen(outBuffer);
-		outBuffer[len] = ';';
-		send(it->Sock, outBuffer, BUFFER_SIZE, 0);
-	    }
+	case CMD_USERS:
+		snprintf(outBuffer, BUFFER_SIZE, CMD_YES_S "%zu;", VFUN(User, Size)(Users));
+		send(U->Sock, outBuffer, BUFFER_SIZE, 0);
+
+		VEC_FOR(User, it, Users)
+		{
+			snprintf(outBuffer, BUFFER_SIZE, CMD_YES_S "%s;", it->Name);
+			send(U->Sock, outBuffer, BUFFER_SIZE, 0);
+		}
+		break;
+
+	case CMD_CLOSE:
+		cit = VFUN(Conn, Find)(Conns, Active, U->Sock);
+		if (cit != VFUN(Conn, End)(Conns))
+			VFUN(Conn, Remove)(Conns, cit);
+		break;
+
+	case CMD_TALK:
+		if (regcomp(&regex, "^" CMD_TALK_S REGEX_NAME ";$", REG_EXTENDED) != 0)
+			ERROR("TALK regcomp");
+		if (regexec(&regex, inBuffer, 2, matches, 0) != 0)
+		{
+			outBuffer[0] = CMD_WTF;
+			outBuffer[1] = ';';
+			send(U->Sock, outBuffer, BUFFER_SIZE, 0);
+		}
+		else
+		{
+			strncpy(name, inBuffer + matches[1].rm_so,
+				MIN(NAME_LENGTH, matches[1].rm_eo - matches[1].rm_so));
+			uit = VFUN(User, Find)(Users, SameName, name);
+
+			// The other user does not exist
+			if (uit == VFUN(User, End)(Users))
+			{
+				snprintf(outBuffer, BUFFER_SIZE, CMD_NO_S ";");
+				send(U->Sock, outBuffer, BUFFER_SIZE, 0);
+			}
+			else
+			{
+				cit = VFUN(Conn, Find)(Conns, Active, uit->Sock);
+
+				// The other user is already in a conversation
+				if (cit != VFUN(Conn, End)(Conns))
+				{
+					snprintf(outBuffer, BUFFER_SIZE, CMD_NO_S ";");
+					send(U->Sock, outBuffer, BUFFER_SIZE, 0);
+				}
+				else
+				{
+					cit = VFUN(Conn, Find)(Conns, Waiting, uit->Sock);
+
+					// This user initiates the connection
+					if (cit == VFUN(Conn, End)(Conns))
+					{
+						conn.Sock1 = U->Sock;
+						conn.Sock2 = 0;
+
+						VFUN(Conn, Push)(Conns, &conn);
+						snprintf(outBuffer, BUFFER_SIZE, CMD_TALK_S "%s;", U->Name);
+						send(uit->Sock, outBuffer, BUFFER_SIZE, 0);
+					}
+					else
+					{
+						if (cit->Sock1 == 0)
+							cit->Sock1 = U->Sock;
+						else
+							cit->Sock2 = U->Sock;
+
+						snprintf(outBuffer, BUFFER_SIZE, CMD_YES_S ";");
+						send(uit->Sock, outBuffer, BUFFER_SIZE, 0);
+					}
+				}
+			}
+		}
+		break;
+
+	case CMD_SEND:
+		if (regcomp(&regex, "^" CMD_SEND_S REGEX_TEXT ";$",
+			REG_EXTENDED) != 0)
+			ERROR("SEND regcomp");
+		if (regexec(&regex, inBuffer, 3, matches, 0) != 0)
+		{
+			snprintf(outBuffer, BUFFER_SIZE, CMD_WTF_S ";");
+			send(U->Sock, outBuffer, BUFFER_SIZE, 0);
+		}
+		else
+		{
+			strncpy(text, inBuffer + matches[1].rm_so,
+				MIN(BUFFER_SIZE - 1, matches[1].rm_eo - matches[1].rm_so));
+
+			cit = VFUN(Conn, Find)(Conns, Active, U->Sock);
+
+			if (cit == VFUN(Conn, End)(Conns))
+			{
+				snprintf(outBuffer, BUFFER_SIZE, CMD_NO_S ";");
+				send(U->Sock, outBuffer, BUFFER_SIZE, 0);
+			}
+			else
+			{
+				snprintf(outBuffer, BUFFER_SIZE, CMD_SEND_S "%s;", text);
+				if (cit->Sock1 == U->Sock)
+					send(cit->Sock2, outBuffer, BUFFER_SIZE, 0);
+				else
+					send(cit->Sock1, outBuffer, BUFFER_SIZE, 0);
+			}
+		}
+		break;
+
+	default:
+		snprintf(outBuffer, BUFFER_SIZE, CMD_WTF_S ";");
+		send(U->Sock, outBuffer, BUFFER_SIZE, 0);
+		break;
 	}
-	break;
-
-    case CMD_SEND:
-	break;
-
-    default:
-	outBuffer[0] = CMD_WTF;
-	outBuffer[1] = ';';
-	break;
-    }
-
-    if (canSend)
-        send(U->Sock, outBuffer, BUFFER_SIZE, 0);
 }
