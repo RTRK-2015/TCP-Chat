@@ -34,6 +34,7 @@ void RemoveUser(User *U);
 
 int main(int argc, char *argv[])
 {
+	// Initialize vectors
 	Users = VFUN(User, New)();
 	Conns = VFUN(Conn, New)();
 
@@ -68,15 +69,19 @@ int main(int argc, char *argv[])
 		if ((ready = select(maxfd + 1, &readfds, NULL, NULL, NULL)) == -1)
 			ERROR("select");
 
+		// Are there new connections?
 		if (ready > 0 && FD_ISSET(Sock, &readfds))
 		{
 			--ready;
 			NewUser();
 		}
 
-		for (User *it = VFUN(User, Begin)(Users);
-			it != VFUN(User, End)(Users) && ready > 0; ++it)
+		// Have any existing connections sent some data?
+		VEC_FOR(User, it, Users)
 		{
+			if (ready <= 0)
+				break;
+
 			if (FD_ISSET(it->Sock, &readfds))
 			{
 				--ready;
@@ -84,6 +89,8 @@ int main(int argc, char *argv[])
 			}
 		}
 
+		// Recalculate maxfd, to account for any new users, or for users
+		// who have disconnected
 		VEC_FOR(User, it, Users)
 		{
 			if (it->Sock > maxfd)
@@ -106,54 +113,58 @@ void NewUser()
 	if (size == -1)
 		ERROR("recv");
 
+	// Client disconnected, nothing to do
 	if (size == 0)
 		return;
 
+	// Prepare a regex to try and match the login command
 	regex_t inRegex;
 	regmatch_t matches[2];
 	if (regcomp(&inRegex, "^" CMD_LOGIN_S REGEX_NAME ";$", REG_EXTENDED) != 0)
 		ERROR("regcomp");
 
 	char outBuffer[BUFFER_SIZE] = "";
+
+	// Is the command malformed?
 	if (regexec(&inRegex, inBuffer, 2, matches, 0) != 0)
 	{
-		outBuffer[0] = CMD_WTF;
-		outBuffer[1] = ';';
+		snprintf(outBuffer, BUFFER_SIZE, CMD_WTF_S ";");
 	}
 	else
 	{
+		// Copy the name into a local buffer
 		char name[NAME_LENGTH + 1] = "";
 		strncpy(name, inBuffer + matches[1].rm_so,
 			MIN(NAME_LENGTH, matches[1].rm_eo - matches[1].rm_so));
 
+		// Check whether the user already exists
 		User* it = VFUN(User, Find)(Users, SameName, name);
 
 		if (it != VFUN(User, End)(Users))
 		{
-			outBuffer[0] = CMD_NO;
-			outBuffer[1] = ';';
+			snprintf(outBuffer, BUFFER_SIZE, CMD_NO_S ";");
 		}
 		else
 		{
+			// If the user does not already exists, add to vector
 			User newuser = { .Sock = newfd };
 			strncpy(newuser.Name, name, NAME_LENGTH);
 
 			VFUN(User, Push)(Users, &newuser);
-
 			FD_SET(newfd, &master);
 
-			outBuffer[0] = CMD_YES;
-			outBuffer[1] = ';';
+			snprintf(outBuffer, BUFFER_SIZE, CMD_YES_S ";");
 		}
 	}
 
-	send(newfd, outBuffer, BUFFER_SIZE, 0);
+	send(Sock, outBuffer, BUFFER_SIZE, 0);
 	regfree(&inRegex);
 }
 
 
 void RemoveUser(User *U)
 {
+	// If the user is a part of a connection, remove it
 	VEC_FOR(Conn, cit, Conns)
 	{
 		if (cit->Sock1 == U->Sock || cit->Sock2 == U->Sock)
@@ -194,9 +205,11 @@ void Respond(User* U)
 		break;
 
 	case CMD_USERS:
+		// Get the number of logged users and send it
 		snprintf(outBuffer, BUFFER_SIZE, CMD_YES_S "%zu;", VFUN(User, Size)(Users));
 		send(U->Sock, outBuffer, BUFFER_SIZE, 0);
 
+		// Send the usernames one by one
 		VEC_FOR(User, it, Users)
 		{
 			snprintf(outBuffer, BUFFER_SIZE, CMD_YES_S "%s;", it->Name);
@@ -205,27 +218,32 @@ void Respond(User* U)
 		break;
 
 	case CMD_CLOSE:
+		// If the user is in an active connection, remove it
 		cit = VFUN(Conn, Find)(Conns, Active, U->Sock);
 		if (cit != VFUN(Conn, End)(Conns))
 			VFUN(Conn, Remove)(Conns, cit);
 		break;
 
 	case CMD_TALK:
+		// Prepare a regex to match a talk command
 		if (regcomp(&regex, "^" CMD_TALK_S REGEX_NAME ";$", REG_EXTENDED) != 0)
 			ERROR("TALK regcomp");
+
+		// Is the command malformed?
 		if (regexec(&regex, inBuffer, 2, matches, 0) != 0)
 		{
-			outBuffer[0] = CMD_WTF;
-			outBuffer[1] = ';';
+			snprintf(outBuffer, BUFFER_SIZE, CMD_WTF_S ";");
 			send(U->Sock, outBuffer, BUFFER_SIZE, 0);
 		}
 		else
 		{
+			// Copy the name in a local buffer
 			strncpy(name, inBuffer + matches[1].rm_so,
 				MIN(NAME_LENGTH, matches[1].rm_eo - matches[1].rm_so));
+
+			// Check whether the user exists
 			uit = VFUN(User, Find)(Users, SameName, name);
 
-			// The other user does not exist
 			if (uit == VFUN(User, End)(Users))
 			{
 				snprintf(outBuffer, BUFFER_SIZE, CMD_NO_S ";");
@@ -233,9 +251,9 @@ void Respond(User* U)
 			}
 			else
 			{
+				// Check whether the user is in an active connection already
 				cit = VFUN(Conn, Find)(Conns, Active, uit->Sock);
 
-				// The other user is already in a conversation
 				if (cit != VFUN(Conn, End)(Conns))
 				{
 					snprintf(outBuffer, BUFFER_SIZE, CMD_NO_S ";");
@@ -243,9 +261,11 @@ void Respond(User* U)
 				}
 				else
 				{
+					// If the user is not in an active connection, check whether
+					// the user is waiting for a response
 					cit = VFUN(Conn, Find)(Conns, Waiting, uit->Sock);
 
-					// This user initiates the connection
+					// No, this is a request
 					if (cit == VFUN(Conn, End)(Conns))
 					{
 						conn.Sock1 = U->Sock;
@@ -255,6 +275,7 @@ void Respond(User* U)
 						snprintf(outBuffer, BUFFER_SIZE, CMD_TALK_S "%s;", U->Name);
 						send(uit->Sock, outBuffer, BUFFER_SIZE, 0);
 					}
+					// Yes, the user is waiting
 					else
 					{
 						if (cit->Sock1 == 0)
@@ -271,9 +292,11 @@ void Respond(User* U)
 		break;
 
 	case CMD_SEND:
-		if (regcomp(&regex, "^" CMD_SEND_S REGEX_TEXT ";$",
-			REG_EXTENDED) != 0)
+		// Prepare a regex to match the send command
+		if (regcomp(&regex, "^" CMD_SEND_S REGEX_TEXT ";$", REG_EXTENDED) != 0)
 			ERROR("SEND regcomp");
+
+		// Is the command malformed?
 		if (regexec(&regex, inBuffer, 3, matches, 0) != 0)
 		{
 			snprintf(outBuffer, BUFFER_SIZE, CMD_WTF_S ";");
@@ -281,9 +304,11 @@ void Respond(User* U)
 		}
 		else
 		{
+			// Copy the text into a local buffer
 			strncpy(text, inBuffer + matches[1].rm_so,
 				MIN(BUFFER_SIZE - 1, matches[1].rm_eo - matches[1].rm_so));
 
+			// Check whether the user is in an active connection
 			cit = VFUN(Conn, Find)(Conns, Active, U->Sock);
 
 			if (cit == VFUN(Conn, End)(Conns))
@@ -303,6 +328,7 @@ void Respond(User* U)
 		break;
 
 	default:
+		// No idea what was sent
 		snprintf(outBuffer, BUFFER_SIZE, CMD_WTF_S ";");
 		send(U->Sock, outBuffer, BUFFER_SIZE, 0);
 		break;
