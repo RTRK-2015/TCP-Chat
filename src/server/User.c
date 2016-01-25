@@ -5,11 +5,10 @@
 
 User UserCopy(const User* U, va_list v)
 {
-	User ret = { };
+	User ret = { .Sock = U->Sock };
 
 	strncpy(ret.Name, U->Name, NAME_LENGTH);
 	ret.Name[NAME_LENGTH] = '\0';
-	ret.Sock = U->Sock;
 
 	return ret;
 }
@@ -17,6 +16,12 @@ User UserCopy(const User* U, va_list v)
 void UserDelete(User *U, va_list v)
 {
 
+}
+
+
+bool SameName(const User* U, va_list args)
+{
+	return strncmp(U->Name, va_arg(args, char*), NAME_LENGTH) == 0;
 }
 
 

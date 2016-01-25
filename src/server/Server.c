@@ -89,12 +89,6 @@ int main(int argc, char *argv[])
 }
 
 
-bool SameName(const User* U, va_list args)
-{
-	return strncmp(U->Name, va_arg(args, char*), NAME_LENGTH) == 0;
-}
-
-
 void NewUser()
 {
 	int newfd;

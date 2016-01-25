@@ -14,6 +14,9 @@ typedef struct
 } User;
 
 
+bool SameName(const User* U, va_list args);
+
+
 DECLARE_VECTOR(User);
 
 
