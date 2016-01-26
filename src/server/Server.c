@@ -31,7 +31,7 @@ void Respond(User* U);
 void RemoveUser(User *U);
 
 
-int main(int argc, char *argv[])
+int main()
 {
 	// Initialize vectors
 	Users = VFUN(User, New)();
