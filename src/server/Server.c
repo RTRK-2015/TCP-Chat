@@ -43,6 +43,7 @@ int main()
 		ERROR("regcomp");
 	if (regcomp(&SendRegex, "^" CMD_SEND_S REGEX_TEXT ";$", REG_EXTENDED) != 0)
 		ERROR("regcomp");
+	printf("Initialized regexes\n");
 
 	// Create the "main" socket, bind it to port and start listening
 	if ((Sock = socket(AF_INET, SOCK_STREAM, 0)) == -1)
