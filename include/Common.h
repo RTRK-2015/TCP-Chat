@@ -6,6 +6,7 @@
 
 
 #define ERROR(str) { perror(str); exit(EXIT_FAILURE); }
+#define ABORT(str, ...) { fprintf(stderr, str, ##__VA_ARGS__); exit(EXIT_FAILURE); }
 
 #define PORT 27015
 #define NAME_LENGTH 32
