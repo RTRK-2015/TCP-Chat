@@ -5,6 +5,8 @@
 
 User UserCopy(const User* U, va_list v)
 {
+	(void)v; // silence the unused warning
+
 	User ret = { .Sock = U->Sock };
 
 	strncpy(ret.Name, U->Name, NAME_LENGTH);
@@ -15,7 +17,8 @@ User UserCopy(const User* U, va_list v)
 
 void UserDelete(User *U, va_list v)
 {
-
+	(void)U; // silence the unused warning
+	(void)v; // silence the unused warning
 }
 
 
