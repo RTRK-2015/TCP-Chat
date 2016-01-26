@@ -13,16 +13,12 @@
 #include "Conn.h"
 
 
-#define MIN(x, y) (((x) < (y))? (x) : (y))
-#define REGEX_NAME "([[:alpha:]]+)"
-#define REGEX_TEXT "(.+)"
-
 // The "main" socket
 static int Sock;
 
 VEC(User) Users;
 VEC(Conn) Conns;
-fd_set readfds;
+fd_set master, readfds;
 
 
 // Forward declarations
@@ -61,11 +57,13 @@ int main()
 	// The main processing loop
 	int maxfd = Sock;
 	FD_ZERO(&readfds);
-	FD_SET(Sock, &readfds);
+	FD_ZERO(&master);
+	FD_SET(Sock, &master);
 
 	while (true)
 	{
 		printf("Waiting for connections\n");
+		memcpy(&readfds, &master, sizeof(master));
 
 		int ready;
 		if ((ready = select(maxfd + 1, &readfds, NULL, NULL, NULL)) == -1)
@@ -157,7 +155,7 @@ void NewUser()
 			strncpy(newuser.Name, name, NAME_LENGTH);
 
 			VFUN(User, Push)(Users, &newuser);
-			FD_SET(newfd, &readfds);
+			FD_SET(newfd, &master);
 
 			snprintf(outBuffer, BUFFER_SIZE, CMD_YES_S ";");
 			printf("Successfully added a new user with the username '%s'\n", name);
@@ -184,7 +182,7 @@ void RemoveUser(User *U)
 		}
 	}
 
-	FD_CLR(U->Sock, &readfds);
+	FD_CLR(U->Sock, &master);
 	close(U->Sock);
 	VFUN(User, Remove)(Users, U);
 

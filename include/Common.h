@@ -7,6 +7,10 @@
 
 #define ERROR(str) { perror(str); exit(EXIT_FAILURE); }
 #define ABORT(str, ...) { fprintf(stderr, str, ##__VA_ARGS__); exit(EXIT_FAILURE); }
+#define MIN(x, y) (((x) < (y))? (x) : (y))
+
+#define REGEX_NAME "([[:alpha:]]+)"
+#define REGEX_TEXT "(.+)"
 
 #define PORT 27015
 #define NAME_LENGTH 32
@@ -21,6 +25,9 @@
 
 #define CMD_LOGIN 'i'
 #define CMD_LOGIN_S "i"
+
+#define CMD_DATA 'd'
+#define CMD_DATA_S "d"
 
 #define CMD_LOGOFF 'o'
 #define CMD_LOGOFF_S "o"
