@@ -36,10 +36,12 @@ int main()
 	// Initialize vectors
 	Users = VFUN(User, New)();
 	Conns = VFUN(Conn, New)();
+	printf("Initialized vectors\n");
 
 	// Create the "main" socket, bind it to port and start listening
 	if ((Sock = socket(AF_INET, SOCK_STREAM, 0)) == -1)
 		ERROR("socket");
+	printf("Created the socket\n");
 
 	struct sockaddr_in server =
 	{
@@ -50,9 +52,11 @@ int main()
 
 	if (bind(Sock, (struct sockaddr *)&server, sizeof(server)) == -1)
 		ERROR("bind");
+	printf("Bound the socket to the port\n");
 
 	if (listen(Sock, 3) == -1)
 		ERROR("listen");
+	printf("Started listening\n");
 
 	// The main processing loop
 	int maxfd = Sock;
@@ -63,10 +67,12 @@ int main()
 	while (true)
 	{
 		memcpy(&readfds, &master, sizeof(master));
+		printf("Waiting for connections\n");
 
 		int ready;
 		if ((ready = select(maxfd + 1, &readfds, NULL, NULL, NULL)) == -1)
 			ERROR("select");
+		printf("Received %d requests\n", ready);
 
 		// Are there new connections?
 		if (ready > 0 && FD_ISSET(Sock, &readfds))
@@ -105,6 +111,7 @@ void NewUser()
 
 	if ((newfd = accept(Sock, NULL, NULL)) == -1)
 		ERROR("accept");
+	printf("Accepted a new connection to fd %d\n", newfd);
 
 	char inBuffer[BUFFER_SIZE + 1] = "";
 	int size = recv(newfd, inBuffer, BUFFER_SIZE, 0);
@@ -128,6 +135,7 @@ void NewUser()
 	if (regexec(&inRegex, inBuffer, 2, matches, 0) != 0)
 	{
 		snprintf(outBuffer, BUFFER_SIZE, CMD_WTF_S ";");
+		printf("The command '%s' did not match the login form\n", inBuffer);
 	}
 	else
 	{
@@ -135,13 +143,14 @@ void NewUser()
 		char name[NAME_LENGTH + 1] = "";
 		strncpy(name, inBuffer + matches[1].rm_so,
 			MIN(NAME_LENGTH, matches[1].rm_eo - matches[1].rm_so));
-
+		printf("New user trying to login with username '%s'\n", name);
 		// Check whether the user already exists
 		User* it = VFUN(User, Find)(Users, SameName, name);
 
 		if (it != VFUN(User, End)(Users))
 		{
 			snprintf(outBuffer, BUFFER_SIZE, CMD_NO_S ";");
+			printf("A user with the username '%s' already exists\n", name);
 		}
 		else
 		{
@@ -153,16 +162,20 @@ void NewUser()
 			FD_SET(newfd, &master);
 
 			snprintf(outBuffer, BUFFER_SIZE, CMD_YES_S ";");
+			printf("Successfully added a new user with the username '%s'\n", name);
 		}
 	}
 
 	send(Sock, outBuffer, BUFFER_SIZE, 0);
 	regfree(&inRegex);
+
+	printf("\n");
 }
 
 
 void RemoveUser(User *U)
 {
+	printf("Removing user with the username '%s' on fd %d\n", U->Name, U->Sock);
 	// If the user is a part of a connection, remove it
 	VEC_FOR(Conn, cit, Conns)
 	{
@@ -175,6 +188,8 @@ void RemoveUser(User *U)
 
 	VFUN(User, Remove)(Users, U);
 	FD_CLR(U->Sock, &master);
+
+	printf("Successfully removed\n\n");
 }
 
 
@@ -197,26 +212,34 @@ void Respond(User* U)
 	regex_t regex;
 	regmatch_t matches[2];
 
+	printf("The user with the username '%s' on fd %d sent: '%s'\n",
+		U->Name, U->Sock, inBuffer);
+
 	switch (inBuffer[0])
 	{
 	case CMD_LOGOFF:
+		printf("Interpreting the command as logoff\n");
 		RemoveUser(U);
 		break;
 
 	case CMD_USERS:
+		printf("Interpreting the command as users\n");
 		// Get the number of logged users and send it
 		snprintf(outBuffer, BUFFER_SIZE, CMD_YES_S "%zu;", VFUN(User, Size)(Users));
 		send(U->Sock, outBuffer, BUFFER_SIZE, 0);
+		printf("Sent number of users: %zu\n", VFUN(User, Size)(Users));
 
 		// Send the usernames one by one
 		VEC_FOR(User, it, Users)
 		{
 			snprintf(outBuffer, BUFFER_SIZE, CMD_YES_S "%s;", it->Name);
 			send(U->Sock, outBuffer, BUFFER_SIZE, 0);
+			printf("Sent username '%s'\n", it->Name);
 		}
 		break;
 
 	case CMD_CLOSE:
+		printf("Interpreting the command as close\n");
 		// If the user is in an active connection, remove it
 		cit = VFUN(Conn, Find)(Conns, Active, U->Sock);
 		if (cit != VFUN(Conn, End)(Conns))
@@ -224,6 +247,7 @@ void Respond(User* U)
 		break;
 
 	case CMD_TALK:
+		printf("Trying to match the command as talk\n");
 		// Prepare a regex to match a talk command
 		if (regcomp(&regex, "^" CMD_TALK_S REGEX_NAME ";$", REG_EXTENDED) != 0)
 			ERROR("TALK regcomp");
@@ -233,13 +257,14 @@ void Respond(User* U)
 		{
 			snprintf(outBuffer, BUFFER_SIZE, CMD_WTF_S ";");
 			send(U->Sock, outBuffer, BUFFER_SIZE, 0);
+			printf("The command was malformed\n");
 		}
 		else
 		{
 			// Copy the name in a local buffer
 			strncpy(name, inBuffer + matches[1].rm_so,
 				MIN(NAME_LENGTH, matches[1].rm_eo - matches[1].rm_so));
-
+			printf("The user wants to chat with '%s'\n", name);
 			// Check whether the user exists
 			uit = VFUN(User, Find)(Users, SameName, name);
 
@@ -247,6 +272,7 @@ void Respond(User* U)
 			{
 				snprintf(outBuffer, BUFFER_SIZE, CMD_NO_S ";");
 				send(U->Sock, outBuffer, BUFFER_SIZE, 0);
+				printf("That user does not exits\n");
 			}
 			else
 			{
@@ -257,6 +283,7 @@ void Respond(User* U)
 				{
 					snprintf(outBuffer, BUFFER_SIZE, CMD_NO_S ";");
 					send(U->Sock, outBuffer, BUFFER_SIZE, 0);
+					printf("That user is already talking with someone\n");
 				}
 				else
 				{
@@ -273,6 +300,7 @@ void Respond(User* U)
 						VFUN(Conn, Push)(Conns, &conn);
 						snprintf(outBuffer, BUFFER_SIZE, CMD_TALK_S "%s;", U->Name);
 						send(uit->Sock, outBuffer, BUFFER_SIZE, 0);
+						printf("This is a request\n");
 					}
 					// Yes, the user is waiting
 					else
@@ -284,6 +312,7 @@ void Respond(User* U)
 
 						snprintf(outBuffer, BUFFER_SIZE, CMD_YES_S ";");
 						send(uit->Sock, outBuffer, BUFFER_SIZE, 0);
+						printf("This is a response\n");
 					}
 				}
 			}
@@ -291,6 +320,7 @@ void Respond(User* U)
 		break;
 
 	case CMD_SEND:
+		printf("Trying to match the command as send\n");
 		// Prepare a regex to match the send command
 		if (regcomp(&regex, "^" CMD_SEND_S REGEX_TEXT ";$", REG_EXTENDED) != 0)
 			ERROR("SEND regcomp");
@@ -300,6 +330,7 @@ void Respond(User* U)
 		{
 			snprintf(outBuffer, BUFFER_SIZE, CMD_WTF_S ";");
 			send(U->Sock, outBuffer, BUFFER_SIZE, 0);
+			printf("The command was malformed\n");
 		}
 		else
 		{
@@ -314,6 +345,7 @@ void Respond(User* U)
 			{
 				snprintf(outBuffer, BUFFER_SIZE, CMD_NO_S ";");
 				send(U->Sock, outBuffer, BUFFER_SIZE, 0);
+				printf("The user is not in an active connection\n");
 			}
 			else
 			{
@@ -322,6 +354,7 @@ void Respond(User* U)
 					send(cit->Sock2, outBuffer, BUFFER_SIZE, 0);
 				else
 					send(cit->Sock1, outBuffer, BUFFER_SIZE, 0);
+				printf("Sent the message to the other user\n");
 			}
 		}
 		break;
@@ -330,6 +363,9 @@ void Respond(User* U)
 		// No idea what was sent
 		snprintf(outBuffer, BUFFER_SIZE, CMD_WTF_S ";");
 		send(U->Sock, outBuffer, BUFFER_SIZE, 0);
+		printf("No idea what the message was supposed to mean\n");
 		break;
 	}
+
+	printf("\n");
 }
