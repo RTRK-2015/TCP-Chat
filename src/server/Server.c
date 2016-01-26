@@ -22,7 +22,7 @@ static int Sock;
 
 VEC(User) Users;
 VEC(Conn) Conns;
-fd_set master, readfds;
+fd_set readfds;
 
 
 // Forward declarations
@@ -56,17 +56,15 @@ int main()
 
 	if (listen(Sock, 3) == -1)
 		ERROR("listen");
-	printf("Started listening\n");
+	printf("Started listening\n\n");
 
 	// The main processing loop
 	int maxfd = Sock;
-	FD_ZERO(&master);
 	FD_ZERO(&readfds);
-	FD_SET(Sock, &master);
+	FD_SET(Sock, &readfds);
 
 	while (true)
 	{
-		memcpy(&readfds, &master, sizeof(master));
 		printf("Waiting for connections\n");
 
 		int ready;
@@ -159,14 +157,14 @@ void NewUser()
 			strncpy(newuser.Name, name, NAME_LENGTH);
 
 			VFUN(User, Push)(Users, &newuser);
-			FD_SET(newfd, &master);
+			FD_SET(newfd, &readfds);
 
 			snprintf(outBuffer, BUFFER_SIZE, CMD_YES_S ";");
 			printf("Successfully added a new user with the username '%s'\n", name);
 		}
 	}
 
-	send(Sock, outBuffer, BUFFER_SIZE, 0);
+	send(newfd, outBuffer, BUFFER_SIZE, 0);
 	regfree(&inRegex);
 
 	printf("\n");
@@ -186,8 +184,9 @@ void RemoveUser(User *U)
 		}
 	}
 
+	FD_CLR(U->Sock, &readfds);
+	close(U->Sock);
 	VFUN(User, Remove)(Users, U);
-	FD_CLR(U->Sock, &master);
 
 	printf("Successfully removed\n\n");
 }
@@ -201,7 +200,10 @@ void Respond(User* U)
 		ERROR("recv");
 
 	if (ret == 0)
+	{
 		RemoveUser(U);
+		return;
+	}
 
 	char outBuffer[BUFFER_SIZE + 1] = "";
 	char name[NAME_LENGTH + 1]      = "";
