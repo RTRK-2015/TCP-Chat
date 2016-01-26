@@ -51,29 +51,29 @@ size_t VFUN(Type, Size)(VEC(Type) Vec)                                  \
                                                                         \
 void VFUN(Type, Delete)(VEC(Type) Vec, ...)                             \
 {                                                                       \
-    va_list args;                                                       \
-    va_start(args, Vec);                                                \
-                                                                        \
-    if (DestroyF != NULL)                                               \
+    if ((void*)DestroyF != NULL)                                        \
     {                                                                   \
         typedef void (*destroy_t)(Type*, va_list);                      \
         destroy_t destroy = (destroy_t)DestroyF;                        \
                                                                         \
         for (size_t i = 0; i < Vec->Length; ++i)                        \
+        {                                                               \
+            va_list args;                                               \
+            va_start(args, Vec);                                        \
             destroy(&Vec->Data[i], args);                               \
-                                                                        \
+            va_end(args);                                               \
+        }                                                               \
     }                                                                   \
                                                                         \
     free(Vec->Data);                                                    \
     free(Vec);                                                          \
-    va_end(args);                                                       \
 }                                                                       \
                                                                         \
 void VFUN(Type, Push)(VEC(Type) Vec, const Type *T, ...)                \
 {                                                                       \
     VFUN(Type, check_reserved)(Vec);                                    \
                                                                         \
-    if (CopyF != NULL)                                                  \
+    if ((void*)CopyF != NULL)                                           \
     {                                                                   \
         typedef Type (*copy_t)(const Type*, va_list);                   \
         copy_t copy = (copy_t)CopyF;                                    \
@@ -101,19 +101,23 @@ Type* VFUN(Type, End)(VEC(Type) Vec)                                    \
 Type* VFUN(Type, Find)(VEC(Type) Vec,                                   \
     bool (*pred)(const Type*, va_list), ...)                            \
 {                                                                       \
-    va_list args;                                                       \
-    va_start(args, pred);                                               \
                                                                         \
     for (size_t i = 0; i < Vec->Length; ++i)                            \
     {                                                                   \
+        va_list args;                                                   \
+        va_start(args, pred);                                           \
+                                                                        \
         if (pred(&Vec->Data[i], args))                                  \
         {                                                               \
             va_end(args);                                               \
             return &Vec->Data[i];                                       \
         }                                                               \
+        else                                                            \
+        {                                                               \
+            va_end(args);                                               \
+        }                                                               \
     }                                                                   \
                                                                         \
-    va_end(args);                                                       \
     return VFUN(Type, End)(Vec);                                        \
 }                                                                       \
                                                                         \
@@ -122,7 +126,7 @@ void VFUN(Type, Remove)(VEC(Type) Vec, Type *Start, ...)                \
     if (Start < VFUN(Type, Begin)(Vec) || Start >= VFUN(Type, End)(Vec))\
         return;                                                         \
                                                                         \
-    if (DestroyF != NULL)                                               \
+    if ((void*)DestroyF != NULL)                                        \
     {                                                                   \
         va_list args;                                                   \
         va_start(args, Start);                                          \
