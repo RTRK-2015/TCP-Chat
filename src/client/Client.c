@@ -4,6 +4,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <sys/select.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <regex.h>
@@ -16,6 +17,8 @@ int Sock;
 char Name[NAME_LENGTH + 1];
 fd_set master, readfds;
 char Buffer[BUFFER_SIZE];
+
+regex_t TalkRegex, YesRegex, NoRegex, SendRegex, TalkCmdRegex, NotCmdRegex, SendCmdRegex;
 
 #define READ_SIZE 512
 
@@ -30,6 +33,21 @@ void Talk(const char *UserBuffer, regmatch_t match);
 int main(int argc, char *argv[])
 {
 	Sock = socket(AF_INET, SOCK_STREAM, 0);
+
+	if (regcomp(&TalkRegex, "^" CMD_TALK_S REGEX_NAME ";$", REG_EXTENDED) != 0)
+		ERROR("regcomp");
+	if (regcomp(&YesRegex, "^" CMD_YES_S ";$", REG_EXTENDED) != 0)
+		ERROR("regcomp");
+	if (regcomp(&NoRegex, "^" CMD_NO_S ";$", REG_EXTENDED) != 0)
+		ERROR("regcomp");
+	if (regcomp(&SendRegex, "^" CMD_SEND_S REGEX_TEXT ";$", REG_EXTENDED) != 0)
+		ERROR("regcomp");
+	if (regcomp(&TalkCmdRegex, "^/talk " REGEX_NAME "$", REG_EXTENDED) != 0)
+		ERROR("regcomp");
+	if (regcomp(&NotCmdRegex, "^/(.+)$", REG_EXTENDED) != 0)
+		ERROR("regcomp");
+	if (regcomp(&SendCmdRegex, "^(.+)$", REG_EXTENDED) != 0)
+		ERROR("regcomp");
 
 	if (argc == 1)
 		ABORT("Usage: %s <username> [<server address>]\n", argv[0]);
@@ -78,48 +96,32 @@ int main(int argc, char *argv[])
 		{
 			recv(Sock, Buffer, BUFFER_SIZE, 0);
 
-			regex_t regex;
 			regmatch_t matches[2];
-
-			if (regcomp(&regex, "^" CMD_TALK_S REGEX_NAME ";$", REG_EXTENDED) != 0)
-				ERROR("regcomp");
-			if (regexec(&regex, Buffer, 2, matches, 0) == 0)
+			if (regexec(&TalkRegex, Buffer, 2, matches, 0) == 0)
 			{
 				char name[NAME_LENGTH + 1] = "";
 				strncpy(name, Buffer + matches[1].rm_so, MIN(NAME_LENGTH, matches[1].rm_eo - matches[1].rm_so));
 				printf("The user '%s' wants to talk\n", name);
 				send(Sock, Buffer, BUFFER_SIZE, 0);
-				continue;
 			}
-
-			if (regcomp(&regex, "^" CMD_YES_S ";$", REG_EXTENDED) != 0)
-				ERROR("regcomp");
-			if (regexec(&regex, Buffer, 0, NULL, 0) == 0)
+			else if (regexec(&YesRegex, Buffer, 0, NULL, 0) == 0)
 			{
 				printf("Accepted the connection\n");
-				continue;
-			}
-
-			if (regcomp(&regex, "^" CMD_NO_S ";$", REG_EXTENDED) != 0)
-				ERROR("regcomp");
-			if (regexec(&regex, Buffer, 0, NULL, 0) == 0)
+			} 
+			else if (regexec(&NoRegex, Buffer, 0, NULL, 0) == 0)
 			{
 				printf("The server refused\n");
-				continue;
 			}
-
-
-			if (regcomp(&regex, "^" CMD_SEND_S REGEX_TEXT ";$", REG_EXTENDED) != 0)
-				ERROR("regcomp");
-			if (regexec(&regex, Buffer, 2, matches, 0) == 0)
+			else if (regexec(&SendRegex, Buffer, 2, matches, 0) == 0)
 			{
 				char text[BUFFER_SIZE - 1] = "";
 				strncpy(text, Buffer + matches[1].rm_so, MIN(BUFFER_SIZE - 1, matches[1].rm_eo - matches[1].rm_so));
 				printf("%s\n", text);
-				continue;
 			}
-
-			printf("Unrecognized command from the server!\n");
+			else
+			{
+				printf("Unrecognized command from the server!\n");
+			}
 		}
 
 		if (FD_ISSET(STDIN_FILENO, &readfds))
@@ -130,56 +132,20 @@ int main(int argc, char *argv[])
 			// Remove \n
 			userBuffer[n - 1] = '\0';
 
-			regex_t regex;
 			regmatch_t matches[2];
 
-			if (regcomp(&regex, "^/users$", REG_EXTENDED) != 0)
-				ERROR("regcomp users");
-			if (regexec(&regex, userBuffer, 0, NULL, 0) == 0)
-			{
+			if (strcmp(userBuffer, "/users") == 0)
 				Users();
-				continue;
-			}
-
-			if (regcomp(&regex, "^/talk " REGEX_NAME "$", REG_EXTENDED) != 0)
-				ERROR("regcomp talk");
-			if (regexec(&regex, userBuffer, 2, matches, 0) == 0)
-			{
+			else if (regexec(&TalkCmdRegex, userBuffer, 2, matches, 0) == 0)
 				Talk(userBuffer, matches[1]);
-				continue;
-			}
-
-			if (regcomp(&regex, "^/close$", REG_EXTENDED) != 0)
-				ERROR("regcomp close");
-			if (regexec(&regex, userBuffer, 0, NULL, 0) == 0)
-			{
+			else if (strcmp(userBuffer, "/close") == 0)
 				Close();
-				continue;
-			}
-
-			if (regcomp(&regex, "^/logoff$", REG_EXTENDED) != 0)
-				ERROR("regcomp logoff");
-			if (regexec(&regex, userBuffer, 0, NULL, 0) == 0)
-			{
+			else if (strcmp(userBuffer, "/logoff") == 0)
 				Logoff();
-				continue;
-			}
-
-			if (regcomp(&regex, "^/(.+)$", REG_EXTENDED) != 0)
-				ERROR("regcomp notcommand");
-			if (regexec(&regex, userBuffer, 0, NULL, 0) == 0)
-			{
+			else if (regexec(&NotCmdRegex, userBuffer, 0, NULL, 0) == 0)
 				printf("Unrecognized command\n");
-				continue;
-			}
-
-			if (regcomp(&regex, "^(.+)$", REG_EXTENDED) != 0)
-				ERROR("regcomp send");
-			if (regexec(&regex, userBuffer, 2, matches, 0) == 0)
-			{
+			else if (regexec(&SendCmdRegex, userBuffer, 2, matches, 0) == 0)
 				Send(userBuffer, matches[1]);
-				continue;
-			}
 		}
 	}
 

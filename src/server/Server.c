@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/select.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -20,6 +21,7 @@ VEC(User) Users;
 VEC(Conn) Conns;
 fd_set master, readfds;
 
+regex_t LoginRegex, TalkRegex, SendRegex;
 
 // Forward declarations
 void NewUser();
@@ -33,6 +35,14 @@ int main()
 	Users = VFUN(User, New)();
 	Conns = VFUN(Conn, New)();
 	printf("Initialized vectors\n");
+
+	// Initialize regexes
+	if (regcomp(&LoginRegex, "^" CMD_LOGIN_S REGEX_NAME ";$", REG_EXTENDED) != 0)
+		ERROR("regcomp");
+	if (regcomp(&TalkRegex, "^" CMD_TALK_S REGEX_NAME ";$", REG_EXTENDED) != 0)
+		ERROR("regcomp");
+	if (regcomp(&SendRegex, "^" CMD_SEND_S REGEX_TEXT ";$", REG_EXTENDED) != 0)
+		ERROR("regcomp");
 
 	// Create the "main" socket, bind it to port and start listening
 	if ((Sock = socket(AF_INET, SOCK_STREAM, 0)) == -1)
@@ -119,16 +129,11 @@ void NewUser()
 	if (size == 0)
 		return;
 
-	// Prepare a regex to try and match the login command
-	regex_t inRegex;
 	regmatch_t matches[2];
-	if (regcomp(&inRegex, "^" CMD_LOGIN_S REGEX_NAME ";$", REG_EXTENDED) != 0)
-		ERROR("regcomp");
-
 	char outBuffer[BUFFER_SIZE] = "";
 
 	// Is the command malformed?
-	if (regexec(&inRegex, inBuffer, 2, matches, 0) != 0)
+	if (regexec(&LoginRegex, inBuffer, 2, matches, 0) != 0)
 	{
 		snprintf(outBuffer, BUFFER_SIZE, CMD_WTF_S ";");
 		printf("The command '%s' did not match the login form\n", inBuffer);
@@ -163,8 +168,6 @@ void NewUser()
 	}
 
 	send(newfd, outBuffer, BUFFER_SIZE, 0);
-	regfree(&inRegex);
-
 	printf("\n");
 }
 
@@ -209,7 +212,6 @@ void Respond(User* U)
 	User *uit;
 	Conn *cit;
 	Conn conn;
-	regex_t regex;
 	regmatch_t matches[2];
 
 	printf("The user with the username '%s' on fd %d sent: '%s'\n",
@@ -248,12 +250,8 @@ void Respond(User* U)
 
 	case CMD_TALK:
 		printf("Trying to match the command as talk\n");
-		// Prepare a regex to match a talk command
-		if (regcomp(&regex, "^" CMD_TALK_S REGEX_NAME ";$", REG_EXTENDED) != 0)
-			ERROR("TALK regcomp");
-
 		// Is the command malformed?
-		if (regexec(&regex, inBuffer, 2, matches, 0) != 0)
+		if (regexec(&TalkRegex, inBuffer, 2, matches, 0) != 0)
 		{
 			snprintf(outBuffer, BUFFER_SIZE, CMD_WTF_S ";");
 			send(U->Sock, outBuffer, BUFFER_SIZE, 0);
@@ -321,12 +319,8 @@ void Respond(User* U)
 
 	case CMD_SEND:
 		printf("Trying to match the command as send\n");
-		// Prepare a regex to match the send command
-		if (regcomp(&regex, "^" CMD_SEND_S REGEX_TEXT ";$", REG_EXTENDED) != 0)
-			ERROR("SEND regcomp");
-
 		// Is the command malformed?
-		if (regexec(&regex, inBuffer, 3, matches, 0) != 0)
+		if (regexec(&SendRegex, inBuffer, 3, matches, 0) != 0)
 		{
 			snprintf(outBuffer, BUFFER_SIZE, CMD_WTF_S ";");
 			send(U->Sock, outBuffer, BUFFER_SIZE, 0);
