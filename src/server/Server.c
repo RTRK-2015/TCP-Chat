@@ -13,7 +13,6 @@
 #include "Conn.h"
 
 
-#define ERROR(str) { perror(str); exit(EXIT_FAILURE); }
 #define MIN(x, y) (((x) < (y))? (x) : (y))
 #define REGEX_NAME "([[:alpha:]]+)"
 #define REGEX_TEXT "(.+)"

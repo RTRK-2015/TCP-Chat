@@ -2,6 +2,11 @@
 #define COMMON_H
 
 
+#include <stdlib.h>
+
+
+#define ERROR(str) { perror(str); exit(EXIT_FAILURE); }
+
 #define PORT 27015
 #define NAME_LENGTH 32
 #define BUFFER_SIZE 512
@@ -39,6 +44,5 @@
 
 #define CMD_WTF 'w'
 #define CMD_WTF_S "w"
-
 
 #endif
